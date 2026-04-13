@@ -239,27 +239,57 @@ jobs:
         run: |
           branch_input="${{ inputs.kernelsu_branch }}"
           variant_input="${{ inputs.kernelsu_variant }}"
+          susfs_enabled="${{ inputs.use_susfs }}"
           
           case "$branch_input" in
             "Stable(标准)")
-              echo "BRANCH=-s susfs-main" >> $GITHUB_ENV
+              if [ "$susfs_enabled" == "true" ]; then
+                # 开启 SUSFS 时，使用带 susfs 的分支
+                echo "BRANCH=-s susfs-main" >> $GITHUB_ENV
+              else
+                # 关闭 SUSFS 时，避免进入带 susfs 依赖的分支导致编译失败
+                case "$variant_input" in
+                  "Official" | "MKSU") echo "BRANCH=-s main" >> $GITHUB_ENV ;;
+                  "Next")              echo "BRANCH=-s next" >> $GITHUB_ENV ;;
+                  "SukiSU")            echo "BRANCH=-s main" >> $GITHUB_ENV ;;
+                  *)
+                    echo "错误：未定义稳定分支的变体 '$variant_input'" >&2
+                    exit 1
+                    ;;
+                esac
+              fi
               ;;
             "Dev(开发)")
-              case "$variant_input" in
-                "Official" | "MKSU") echo "BRANCH=-s main" >> $GITHUB_ENV ;;
-                "Next")              echo "BRANCH=-s next-susfs-dev" >> $GITHUB_ENV ;;
-                "SukiSU")           echo "BRANCH=-s susfs-test" >> $GITHUB_ENV ;;
-                *) 
-                  echo "错误：未定义开发分支的变体 '$variant_input'" >&2
-                  exit 1
-                  ;;
-              esac
+              if [ "$susfs_enabled" == "true" ]; then
+                case "$variant_input" in
+                  "Official" | "MKSU") echo "BRANCH=-s main" >> $GITHUB_ENV ;;
+                  "Next")              echo "BRANCH=-s next-susfs-dev" >> $GITHUB_ENV ;;
+                  "SukiSU")            echo "BRANCH=-s susfs-test" >> $GITHUB_ENV ;;
+                  *)
+                    echo "错误：未定义开发分支的变体 '$variant_input'" >&2
+                    exit 1
+                    ;;
+                esac
+              else
+                # 关闭 SUSFS 时回退到常规开发分支
+                case "$variant_input" in
+                  "Official" | "MKSU") echo "BRANCH=-s main" >> $GITHUB_ENV ;;
+                  "Next")              echo "BRANCH=-s next" >> $GITHUB_ENV ;;
+                  "SukiSU")            echo "BRANCH=-s main" >> $GITHUB_ENV ;;
+                  *)
+                    echo "错误：未定义开发分支的变体 '$variant_input'" >&2
+                    exit 1
+                    ;;
+                esac
+              fi
               ;;
             *)
               echo "错误：需要自定义分支时未提供参数" >&2
               exit 1
               ;;
           esac
+
+          echo "最终 KernelSU 分支参数: $BRANCH"
 
       - name: 添加 KernelSU
         run: |
@@ -895,6 +925,7 @@ jobs:
           path: |
             *AnyKernel3.zip
             *.img
+
 
 
 
