@@ -386,6 +386,21 @@ jobs:
               fi
             fi
           fi
+
+      - name: Apply unicode bypass fix patch (kernel 5.10-6.1 only)
+        run: |
+          cd "$CONFIG/common"
+          if [ "${{ inputs.kernel_version }}" = "5.10" ] || [ "${{ inputs.kernel_version }}" = "5.15" ] || [ "${{ inputs.kernel_version }}" = "6.1" ]; then
+            PATCH_FILE="../../patches/unicode_bypass_fix_5.10-6.1.patch"
+            if [ -f "$PATCH_FILE" ]; then
+              echo "Kernel ${{ inputs.kernel_version }} detected, applying unicode bypass fix patch..."
+              patch -p1 --forward --fuzz=3 < "$PATCH_FILE" || true
+            else
+              echo "Patch file not found: $PATCH_FILE, skip"
+            fi
+          else
+            echo "Kernel ${{ inputs.kernel_version }} is out of 5.10-6.1, skip unicode bypass fix patch"
+          fi
   
       - name: 应用新的HOOKS补丁
         if: ${{ inputs.use_susfs }}
@@ -874,4 +889,6 @@ jobs:
           path: |
             *AnyKernel3.zip
             *.img
+
+
 
