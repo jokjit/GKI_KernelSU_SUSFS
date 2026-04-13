@@ -441,7 +441,7 @@ jobs:
             fi
           fi
 
-      - name: Apply unicode bypass fix patch (prefer WildKernels patch)
+      - name: 启用 Unicode 0宽字符修复补丁
         if: ${{ inputs.use_unicode_bypass_fix }}
         run: |
           cd "$CONFIG/common"
