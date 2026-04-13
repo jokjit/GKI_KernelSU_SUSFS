@@ -422,6 +422,25 @@ jobs:
             fi
           fi
 
+          # 兼容某些补丁组合在 task_mmu.c 里留下未使用符号，
+          # 在 -Werror 下会因 -Wunused-variable/-Wunused-label 直接编译失败。
+          TASK_MMU=./fs/proc/task_mmu.c
+          if [ -f "$TASK_MMU" ]; then
+            bypass_label_count=$(grep -c '^[[:space:]]*bypass:[[:space:]]*$' "$TASK_MMU" || true)
+            bypass_goto_count=$(grep -c 'goto[[:space:]]\+bypass;' "$TASK_MMU" || true)
+            if [ "$bypass_label_count" -gt 0 ] && [ "$bypass_goto_count" -eq 0 ]; then
+              echo "发现未引用 bypass 标签，移除"
+              sed -i '/^[[:space:]]*bypass:[[:space:]]*$/d' "$TASK_MMU"
+            fi
+
+            dentry_decl_count=$(grep -c 'struct dentry \*dentry;' "$TASK_MMU" || true)
+            dentry_token_count=$(grep -o '\<dentry\>' "$TASK_MMU" | wc -l)
+            if [ "$dentry_decl_count" -gt 0 ] && [ "$dentry_token_count" -le 1 ]; then
+              echo "发现未使用 dentry 变量声明，移除"
+              sed -i '/struct dentry \*dentry;/d' "$TASK_MMU"
+            fi
+          fi
+
       - name: Apply unicode bypass fix patch (kernel 5.10-6.1 only)
         if: ${{ inputs.use_unicode_bypass_fix }}
         run: |
@@ -925,6 +944,7 @@ jobs:
           path: |
             *AnyKernel3.zip
             *.img
+
 
 
 
