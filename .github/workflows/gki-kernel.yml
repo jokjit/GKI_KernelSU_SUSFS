@@ -574,7 +574,15 @@ jobs:
             echo "CONFIG_KSU_KPROBES_HOOK=n" >> ./common/arch/arm64/configs/gki_defconfig
             echo "CONFIG_KSU_SUSFS_SUS_SU=n" >> ./common/arch/arm64/configs/gki_defconfig
           elif [ "${{ inputs.kernelsu_variant }}" == "SukiSU" ]; then
-            echo "CONFIG_KPM=y" >> ./common/arch/arm64/configs/gki_defconfig
+            # 仅在用户开启 use_kpm 且 supercall 头文件存在时启用 KPM。
+            # 否则会在 drivers/kernelsu/kpm 编译阶段报 uapi/supercall.h not found。
+            if [ "${{ inputs.use_kpm }}" == "true" ] && [ -f ./common/include/uapi/supercall.h ]; then
+              echo "启用 KPM（检测到 supercall.h）"
+              echo "CONFIG_KPM=y" >> ./common/arch/arm64/configs/gki_defconfig
+            else
+              echo "跳过 KPM（use_kpm=${{ inputs.use_kpm }}, supercall.h 缺失或未开启）"
+              echo "CONFIG_KPM=n" >> ./common/arch/arm64/configs/gki_defconfig
+            fi
             echo "CONFIG_KSU_SUSFS_SUS_SU=n" >> ./common/arch/arm64/configs/gki_defconfig
           elif [ "${{ inputs.kernelsu_variant }}" == "MKSU" ]; then
             echo "CONFIG_KSU_SUSFS_SUS_SU=n" >> ./common/arch/arm64/configs/gki_defconfig
@@ -771,6 +779,10 @@ jobs:
       - name: 修补 Image 文件 安卓12和安卓13(仅限sukisu)
         if: ${{ inputs.use_kpm && inputs.kernelsu_variant == 'SukiSU' && (inputs.android_version == 'android12' || inputs.android_version == 'android13') }}
         run: |
+          if [ ! -f "$CONFIG/common/include/uapi/supercall.h" ]; then
+            echo "supercall.h 缺失，跳过 KPM Image 修补步骤"
+            exit 0
+          fi
           if [ "${{ inputs.kernel_version }}" != "6.6" ]; then
             echo "Patching Image file..."
             cd "$CONFIG/out/${{ inputs.android_version }}-${{ inputs.kernel_version }}/dist"
@@ -785,6 +797,10 @@ jobs:
       - name: 修补 Image 文件 安卓14和安卓15(仅限sukisu)
         if: ${{ inputs.use_kpm && inputs.kernelsu_variant == 'SukiSU' && (inputs.android_version == 'android14' || inputs.android_version == 'android15') }}
         run: |
+          if [ ! -f "$CONFIG/common/include/uapi/supercall.h" ]; then
+            echo "supercall.h 缺失，跳过 KPM Image 修补步骤"
+            exit 0
+          fi
           if [ "${{ inputs.kernel_version }}" != "6.6" ]; then
             echo "Patching Image file..."
             cd "$CONFIG/bazel-bin/common/kernel_aarch64/"
@@ -944,6 +960,7 @@ jobs:
           path: |
             *AnyKernel3.zip
             *.img
+
 
 
 
