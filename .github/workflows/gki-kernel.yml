@@ -71,6 +71,11 @@ on:
         required: true
         type: boolean
         default: true
+      use_unicode_bypass_fix:
+        description: '是否启用 Unicode 0宽字符修复补丁（仅 5.10/5.15/6.1 生效）?'
+        required: true
+        type: boolean
+        default: true
       BBG:
         description: "是否启用内核层面阻止对关键分区/设备节点的非法写入(LSM)？"
         required: true
@@ -388,6 +393,7 @@ jobs:
           fi
 
       - name: Apply unicode bypass fix patch (kernel 5.10-6.1 only)
+        if: ${{ inputs.use_unicode_bypass_fix }}
         run: |
           cd "$CONFIG/common"
           if [ "${{ inputs.kernel_version }}" = "5.10" ] || [ "${{ inputs.kernel_version }}" = "5.15" ] || [ "${{ inputs.kernel_version }}" = "6.1" ]; then
@@ -889,6 +895,7 @@ jobs:
           path: |
             *AnyKernel3.zip
             *.img
+
 
 
 
