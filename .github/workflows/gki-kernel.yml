@@ -441,20 +441,40 @@ jobs:
             fi
           fi
 
-      - name: Apply unicode bypass fix patch (kernel 5.10-6.1 only)
+      - name: Apply unicode bypass fix patch (prefer WildKernels patch)
         if: ${{ inputs.use_unicode_bypass_fix }}
         run: |
           cd "$CONFIG/common"
+          PATCH_FILE=""
+
           if [ "${{ inputs.kernel_version }}" = "5.10" ] || [ "${{ inputs.kernel_version }}" = "5.15" ] || [ "${{ inputs.kernel_version }}" = "6.1" ]; then
-            PATCH_FILE="../../patches/unicode_bypass_fix_5.10-6.1.patch"
-            if [ -f "$PATCH_FILE" ]; then
-              echo "Kernel ${{ inputs.kernel_version }} detected, applying unicode bypass fix patch..."
-              patch -p1 --forward --fuzz=3 < "$PATCH_FILE" || true
-            else
-              echo "Patch file not found: $PATCH_FILE, skip"
+            # 优先使用 WildKernels 的 6.1- 补丁
+            if [ -f "../../kernel_patches/common/unicode_bypass_fix_6.1-.patch" ]; then
+              PATCH_FILE="../../kernel_patches/common/unicode_bypass_fix_6.1-.patch"
+            elif [ -f "../../patches/unicode_bypass_fix_5.10-6.1.patch" ]; then
+              # 兜底：仓库内置补丁
+              PATCH_FILE="../../patches/unicode_bypass_fix_5.10-6.1.patch"
             fi
+          elif [ "${{ inputs.kernel_version }}" = "6.6" ]; then
+            # 6.6 使用 WildKernels 的 6.1+ 补丁
+            if [ -f "../../kernel_patches/common/unicode_bypass_fix_6.1+.patch" ]; then
+              PATCH_FILE="../../kernel_patches/common/unicode_bypass_fix_6.1+.patch"
+            fi
+          fi
+
+          if [ -z "$PATCH_FILE" ]; then
+            echo "未找到可用 Unicode bypass 补丁，跳过"
+            exit 0
+          fi
+
+          echo "Kernel ${{ inputs.kernel_version }} detected, applying: $PATCH_FILE"
+          patch -p1 --forward --fuzz=3 < "$PATCH_FILE" || true
+
+          # 验证关键逻辑是否已出现（仅提示，不阻断编译）
+          if grep -qF "*LEAF_STR(leaf) == '\\0'" fs/unicode/utf8-norm.c; then
+            echo "Unicode bypass fix 已生效（检测到关键代码片段）"
           else
-            echo "Kernel ${{ inputs.kernel_version }} is out of 5.10-6.1, skip unicode bypass fix patch"
+            echo "::warning::Unicode bypass patch 可能未实际生效，请检查 patch 日志"
           fi
   
       - name: 应用新的HOOKS补丁
@@ -960,6 +980,7 @@ jobs:
           path: |
             *AnyKernel3.zip
             *.img
+
 
 
 
