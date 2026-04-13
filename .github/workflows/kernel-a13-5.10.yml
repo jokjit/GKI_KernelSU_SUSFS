@@ -1,0 +1,115 @@
+name: Android 13 5.10
+permissions:
+  contents: write  # Allow writing to repository contents (for pushing tags)
+  actions: write   # Allows triggering actions
+  
+on:
+  workflow_call:  # This allows this workflow to be called from another workflow
+    inputs:
+      make_release:
+        required: true
+        type: boolean
+        default: true
+      kernelsu_variant:
+        required: true
+        type: string
+        default: Next
+      kernelsu_branch:
+        required: true
+        type: string
+        default: Stable
+      version:
+        required: false
+        type: string
+        default: ""
+      use_zram:
+        description: '是否开启增加更多ZRAM算法?'
+        required: true
+        type: boolean
+        default: true
+      use_susfs:
+        description: '是否启用SUSFS补丁与相关配置?'
+        required: true
+        type: boolean
+        default: true
+      use_hide_stuff:
+        description: '是否启用隐藏特征补丁(69_hide_stuff)?'
+        required: true
+        type: boolean
+        default: true
+      use_bbr:
+        description: '是否编译BBR拥塞控制支持?'
+        required: true
+        type: boolean
+        default: true
+      use_westwood:
+        description: '是否编译Westwood拥塞控制支持?'
+        required: true
+        type: boolean
+        default: true
+      use_proxy_optimization:
+        description: '是否启用代理性能优化(TPROXY/ipset/IPv6 NAT)?'
+        required: true
+        type: boolean
+        default: true
+      use_kpm:
+        description: '是否开启KPM功能?'
+        required: true
+        type: boolean
+        default: true
+      use_O2:
+        description: '是否开启O2编译优化?'
+        required: true
+        type: boolean
+        default: false
+      BBG:
+        description: "是否启用内核层面阻止对关键分区/设备节点的非法写入(LSM)？"
+        required: true
+        type: boolean
+        default: true
+jobs:
+  build-kernel-a13-5-10-kernelsu-susfs:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # - sub_level: "189"
+          #   os_patch_level: "2023-11"
+          #- sub_level: "198"
+          #  os_patch_level: "2024-01"
+          #- sub_level: "205"
+          #  os_patch_level: "2024-03"
+          #- sub_level: "209"
+          #  os_patch_level: "2024-05"
+          #- sub_level: "210"
+          #  os_patch_level: "2024-06"
+          # - sub_level: "214"
+          #   os_patch_level: "2024-07"
+          - sub_level: "218"
+            os_patch_level: "2024-08"
+          - sub_level: "223"
+            os_patch_level: "2024-11"
+          - sub_level: "228"
+            os_patch_level: "2025-01"
+          - sub_level: "X"
+            os_patch_level: "lts"
+    uses: ./.github/workflows/gki-kernel.yml
+    secrets: inherit
+    with:
+      make_release: ${{ inputs.make_release || false }}
+      android_version: "android13"
+      kernel_version: "5.10"
+      sub_level: ${{ matrix.sub_level }}
+      os_patch_level: ${{ matrix.os_patch_level }}
+      kernelsu_variant: ${{ inputs.kernelsu_variant || 'Next' }}
+      kernelsu_branch: ${{ inputs.kernelsu_branch || 'Dev' }}
+      version: ${{ inputs.version || '' }}
+      use_zram: ${{ inputs.use_zram }}
+      use_susfs: ${{ inputs.use_susfs }}
+      use_hide_stuff: ${{ inputs.use_hide_stuff }}
+      use_bbr: ${{ inputs.use_bbr }}
+      use_westwood: ${{ inputs.use_westwood }}
+      use_proxy_optimization: ${{ inputs.use_proxy_optimization }}
+      use_kpm: ${{ inputs.use_kpm }}
+      use_O2: ${{ inputs.use_O2 || false }}
+      BBG: ${{ inputs.BBG || true }}
