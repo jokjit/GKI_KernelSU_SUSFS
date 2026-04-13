@@ -107,6 +107,7 @@ jobs:
         id: add_KSU
         continue-on-error: true
         run: |
+          set -e
           if [ "${{ inputs.kernelsu_variant }}" == "Next" ]; then
             echo "KernelSU Next..."
             REPO="KernelSU-Next/KernelSU-Next"
@@ -131,6 +132,7 @@ jobs:
           # 初始化
           NUMBER=0
           DOWNLOAD_URL=""
+          MATCHED_ARTIFACT_NAME=""
 
           echo "开始查找包含 'manager' 产物的构建..."
           while true; do
@@ -144,24 +146,36 @@ jobs:
 
             # 1. 获取指定顺序的成功构建的ID
 
-            BUILD_ID=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" "https://api.github.com/repos/$REPO/actions/workflows/$FILENAME/runs?status=success" | jq -r '.workflow_runs['"$NUMBER"'].id')
+            BUILD_ID=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" "https://api.github.com/repos/$REPO/actions/workflows/$FILENAME/runs?status=success" | jq -r '.workflow_runs['"$NUMBER"'].id // empty')
+
+            if [ -z "$BUILD_ID" ] || [ "$BUILD_ID" = "null" ]; then
+              echo "没有可用的成功构建 ID，继续尝试更旧的记录"
+              NUMBER=$((NUMBER + 1))
+              continue
+            fi
 
             echo "找到构建 ID: $BUILD_ID"
 
             ARTIFACTS=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" "https://api.github.com/repos/$REPO/actions/runs/$BUILD_ID/artifacts")
-            result=$(echo "$ARTIFACTS" | jq -r '.artifacts[] | select(.name | contains("'"$KSUM"'")) | .name')
+            result=$(echo "$ARTIFACTS" | jq -r --arg ksum "$KSUM" '.artifacts[]? | select((.name | ascii_downcase) | contains($ksum | ascii_downcase)) | .name' | head -n 1)
 
-            if [ -z "$result" ]; then
+            if [ -z "$result" ] || [ "$result" = "null" ]; then
               echo "没有找到包含 '$KSUM' 的项"
               NUMBER=$((NUMBER + 1))
             else
-              echo "$result"
-              DOWNLOAD_URL=$(echo "$ARTIFACTS" | jq -r '.artifacts[] | select(.name == "'"$KSUM"'") | .archive_download_url')
+              MATCHED_ARTIFACT_NAME="$result"
+              echo "匹配到产物: $MATCHED_ARTIFACT_NAME"
+              DOWNLOAD_URL=$(echo "$ARTIFACTS" | jq -r --arg name "$MATCHED_ARTIFACT_NAME" '.artifacts[]? | select(.name == $name) | .archive_download_url' | head -n 1)
               break
             fi
 
           done
          
+          if [ -z "$DOWNLOAD_URL" ] || [ "$DOWNLOAD_URL" = "null" ]; then
+            echo "错误：未找到可下载的管理器产物 URL"
+            exit 1
+          fi
+
           # 下载 Manager 文件
           curl -L -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" -o "${{ inputs.kernelsu_variant }}-管理器(${{ env.KSU_VERSION }}).zip" "$DOWNLOAD_URL"
           echo "Manager 文件已下载为：${{ inputs.kernelsu_variant }}-管理器(${{ env.KSU_VERSION }}).zip"
@@ -211,7 +225,7 @@ jobs:
         with:
           name: ${{ inputs.kernelsu_variant }}-Manager(${{ env.KSU_VERSION }})
           path: |
-            *.apk
+            **/*.apk
 
       - name: 上传SUSFS模块
         if: steps.add_SUSFS.outcome == 'success'
