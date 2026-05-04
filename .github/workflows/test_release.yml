@@ -12,6 +12,11 @@ on:
         required: true
         type: boolean
         default: true
+      use_ksu:
+        description: '是否集成 KernelSU（关闭则编译纯净内核，不进行任何 su 修补）?'
+        required: true
+        type: boolean
+        default: true
       kernels_to_build:
         description: |
           指定编译的内核版本,使用逗号分隔 例如:
@@ -21,11 +26,6 @@ on:
         type: string
         default: 'all'
       # ↓↓↓ 新增：是否集成 KernelSU ↓↓↓
-      use_ksu:
-        description: '是否集成 KernelSU（关闭则编译纯净内核，不进行任何 su 修补）?'
-        required: true
-        type: boolean
-        default: true
       kernelsu_variant:
         # description: "选择 KernelSU | 注意:选中MKSU时为标准版"
         description: "选择 KernelSU（use_ksu=false 时此选项无效）"
