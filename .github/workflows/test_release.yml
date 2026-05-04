@@ -1,4 +1,4 @@
-name: 测试发布
+name: 测试构建
 
 permissions:
   contents: write  # Allow writing to repository contents (for pushing tags)
@@ -20,9 +20,15 @@ on:
         required: true
         type: string
         default: 'all'
+      # ↓↓↓ 新增：是否集成 KernelSU ↓↓↓
+      use_ksu:
+        description: '是否集成 KernelSU（关闭则编译纯净内核，不进行任何 su 修补）?'
+        required: true
+        type: boolean
+        default: true
       kernelsu_variant:
         # description: "选择 KernelSU | 注意:选中MKSU时为标准版"
-        description: "选择 KernelSU"
+        description: "选择 KernelSU（use_ksu=false 时此选项无效）"
         required: true
         type: choice
         options:
@@ -32,7 +38,7 @@ on:
           - SukiSU
         default: SukiSU
       kernelsu_branch:
-        description: "选择 ksu 分支"
+        description: "选择 ksu 分支（use_ksu=false 时此选项无效）"
         required: true
         type: choice
         options:
@@ -41,7 +47,7 @@ on:
           - Other(其他/指定)
         default: Dev(开发)
       # kernelsu_branch_other:
-      #   description: "如果选择了 “其他”，请指定您的自定义分支"
+      #   description: "如果选择了 "其他"，请指定您的自定义分支"
       #   required: false
       #   type: string  # This input is required if 'Other' is chosen
       version:
@@ -54,7 +60,7 @@ on:
         type: boolean
         default: true
       use_susfs:
-        description: '是否启用SUSFS补丁与相关配置?'
+        description: '是否启用SUSFS补丁与相关配置?（需要 use_ksu=true）'
         required: true
         type: boolean
         default: true
@@ -84,7 +90,7 @@ on:
         type: boolean
         default: true
       use_kpm:
-        description: '是否开启KPM功能?'
+        description: '是否开启KPM功能?（需要 use_ksu=true 且 SukiSU 变体）'
         required: true
         type: boolean
         default: false
@@ -99,12 +105,14 @@ on:
         type: boolean
         default: true
       get_manager:
-        description: '是否同时获取最新KSU管理器?'
+        description: '是否同时获取最新KSU管理器?（需要 use_ksu=true）'
         required: true
         type: boolean
         default: false
 jobs:
+  # ↓↓↓ use_ksu=false 时跳过此 job ↓↓↓
   get_manager:
+    if: ${{ inputs.use_ksu }}
     uses: ./.github/workflows/get-manager.yml
     secrets: inherit
     with:
@@ -116,6 +124,7 @@ jobs:
     secrets: inherit
     with:
       make_release: true
+      use_ksu: ${{ inputs.use_ksu }}
       kernelsu_variant: ${{ inputs.kernelsu_variant }}
       kernelsu_branch: ${{ inputs.kernelsu_branch }}
       # # kernelsu_branch_other: ${{ inputs.kernelsu_branch_other }}
@@ -137,6 +146,7 @@ jobs:
     secrets: inherit
     with:
       make_release: ${{ inputs.make_release }}
+      use_ksu: ${{ inputs.use_ksu }}
       kernelsu_variant: ${{ inputs.kernelsu_variant }}
       kernelsu_branch: ${{ inputs.kernelsu_branch }}
       # kernelsu_branch_other: ${{ inputs.kernelsu_branch_other }}
@@ -158,6 +168,7 @@ jobs:
     secrets: inherit
     with:
       make_release: ${{ inputs.make_release }}
+      use_ksu: ${{ inputs.use_ksu }}
       kernelsu_variant: ${{ inputs.kernelsu_variant }}
       kernelsu_branch: ${{ inputs.kernelsu_branch }}
       # kernelsu_branch_other: ${{ inputs.kernelsu_branch_other }}
@@ -179,6 +190,7 @@ jobs:
     secrets: inherit
     with:
       make_release: ${{ inputs.make_release }}
+      use_ksu: ${{ inputs.use_ksu }}
       kernelsu_variant: ${{ inputs.kernelsu_variant }}
       kernelsu_branch: ${{ inputs.kernelsu_branch }}
       # kernelsu_branch_other: ${{ inputs.kernelsu_branch_other }}
@@ -200,6 +212,7 @@ jobs:
     secrets: inherit
     with:
       make_release: ${{ inputs.make_release }}
+      use_ksu: ${{ inputs.use_ksu }}
       kernelsu_variant: ${{ inputs.kernelsu_variant }}
       kernelsu_branch: ${{ inputs.kernelsu_branch }}
       # kernelsu_branch_other: ${{ inputs.kernelsu_branch_other }}
@@ -221,6 +234,7 @@ jobs:
     secrets: inherit
     with:
       make_release: ${{ inputs.make_release }}
+      use_ksu: ${{ inputs.use_ksu }}
       kernelsu_variant: ${{ inputs.kernelsu_variant }}
       kernelsu_branch: ${{ inputs.kernelsu_branch }}
       # kernelsu_branch_other: ${{ inputs.kernelsu_branch_other }}
@@ -275,7 +289,7 @@ jobs:
           echo "get_manager result: $RESULT_GET_MANAGER"
           
           # 1. Check get_manager job only if it was supposed to run
-          if [[ "${{ inputs.get_manager }}" == "true" ]]; then
+          if [[ "${{ inputs.get_manager }}" == "true" ]] && [[ "${{ inputs.use_ksu }}" == "true" ]]; then
             if [[ "$RESULT_GET_MANAGER" != "success" ]]; then
               SHOULD_PROCEED="false"
               ERROR_MESSAGE+="get_manager job did not succeed (result: $RESULT_GET_MANAGER). "
@@ -333,17 +347,12 @@ jobs:
       REPO_NAME: ${{ github.event.repository.name }}
       SUS_VERSION: ''
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      RELEASE_NAME: "GKI内核: ${{ inputs.kernelsu_variant == 'Next' && 'KernelSU-' || '' }}${{ inputs.kernelsu_variant }}(${{ needs.get_manager.outputs.ksuVer }})  & SUSFS ${{ needs.get_manager.outputs.susVer }}"
+      # RELEASE_NAME 和 RELEASE_NOTES 在步骤中动态设置，此处仅为占位
+      RELEASE_NAME: ''
       RELEASE_NOTES: |
 
         功能:
-        -> ${{ inputs.kernelsu_variant == 'Next' && 'KernelSU-' || '' }}${{ inputs.kernelsu_variant }}${{ inputs.kernelsu_variant == 'Official' && '原版' || '' }}${{ inputs.kernelsu_branch == 'Dev(开发)' && format('({0})', needs.get_manager.outputs.ksuVer) || '稳定版' }}
-        -> SUSFS ${{ inputs.use_susfs && format('ඞ {0}', needs.get_manager.outputs.susVer) || '未启用' }}
-        -> SUSFS Inline Hooks ${{ inputs.use_susfs && '启用' || '未启用' }}
-        -> LineageOS 检测对抗
-        -> jit-zygote-cache 检测对抗
         -> O2编译优化 ${{ inputs.use_O2 && '启用' || '未启用' }}
-        -> KPM ${{ inputs.use_kpm && ' 支持' || '不支持' }}
         -> Baseband-guard(BBG) 支持 ${{ inputs.BBG && '启用' || '未启用' }}
         -> bbr算法支持 ${{ inputs.use_bbr && '启用' || '未启用' }}
         -> westwood算法支持 ${{ inputs.use_westwood && '启用' || '未启用' }}
@@ -364,8 +373,34 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v3
 
+      # ↓↓↓ 动态设置 RELEASE_NAME（根据是否集成 KSU 区分） ↓↓↓
+      - name: 设置 Release 名称
+        run: |
+          if [ "${{ inputs.use_ksu }}" == "true" ]; then
+            VARIANT_PREFIX=""
+            if [ "${{ inputs.kernelsu_variant }}" == "Next" ]; then
+              VARIANT_PREFIX="KernelSU-"
+            fi
+            KSU_VER="${{ needs.get_manager.outputs.ksuVer }}"
+            SUS_VER="${{ needs.get_manager.outputs.susVer }}"
+            echo "RELEASE_NAME=GKI内核: ${VARIANT_PREFIX}${{ inputs.kernelsu_variant }}(${KSU_VER}) & SUSFS ${SUS_VER}" >> $GITHUB_ENV
+            # 追加 KSU 功能行到 RELEASE_NOTES
+            echo "RELEASE_NOTES<<EOFNOTES" >> $GITHUB_ENV
+            echo "$RELEASE_NOTES" >> $GITHUB_ENV
+            echo "-> ${VARIANT_PREFIX}${{ inputs.kernelsu_variant }}${{ inputs.kernelsu_variant == 'Official' && '原版' || '' }}${{ inputs.kernelsu_branch == 'Dev(开发)' && '(开发版)' || '稳定版' }}" >> $GITHUB_ENV
+            echo "-> SUSFS ${{ inputs.use_susfs && 'ඞ 启用' || '未启用' }}" >> $GITHUB_ENV
+            echo "-> SUSFS Inline Hooks ${{ inputs.use_susfs && '启用' || '未启用' }}" >> $GITHUB_ENV
+            echo "-> LineageOS 检测对抗" >> $GITHUB_ENV
+            echo "-> jit-zygote-cache 检测对抗" >> $GITHUB_ENV
+            echo "-> KPM ${{ inputs.use_kpm && '支持' || '不支持' }}" >> $GITHUB_ENV
+            echo "EOFNOTES" >> $GITHUB_ENV
+          else
+            echo "RELEASE_NAME=纯净 GKI 内核（无 Root 管理器）" >> $GITHUB_ENV
+          fi
+
+      # ↓↓↓ use_ksu=false 时跳过以下 KSU 信息收集步骤 ↓↓↓
       - name: 确定分支为 KernelSU-${{ inputs.kernelsu_variant }}
-        if: ${{ inputs.kernelsu_branch == 'Dev(开发)' || inputs.kernelsu_variant == 'MKSU' || inputs.kernelsu_variant == 'SukiSU'  }}
+        if: ${{ inputs.use_ksu && (inputs.kernelsu_branch == 'Dev(开发)' || inputs.kernelsu_variant == 'MKSU' || inputs.kernelsu_variant == 'SukiSU') }}
         run: |
           # Determine the branch based on user input
           if [[ "${{ inputs.kernelsu_variant }}" == "Official" || "${{ inputs.kernelsu_variant }}" == "MKSU" ]]; then
@@ -383,6 +418,7 @@ jobs:
           echo "KSU_BRANCH=$BRANCH" >> $GITHUB_ENV
 
       - name: 获取提交哈希值或标签并生成 URL 于 KernelSU-${{ inputs.kernelsu_variant }}
+        if: ${{ inputs.use_ksu }}
         run: |
           if [ "${{ inputs.kernelsu_variant }}" == "Official" ]; then
             echo "This is the Official variant"
@@ -432,6 +468,7 @@ jobs:
           echo "KernelSU URL: $KSU_URL"
 
       - name: 获取提交哈希值并生成提交 URL
+        if: ${{ inputs.use_ksu }}
         run: |
           GITLAB_OWNER="simonpunk"
           GITLAB_REPO="susfs4ksu"
@@ -460,7 +497,8 @@ jobs:
             fi
           done
 
-      - name: 将提交哈希值和链接添加到 `RELEASE_NOTES` 中，并将 KernelSU-Next 引用添加到 `RELEASE_NOTES` 中。
+      - name: 将提交哈希值和链接添加到 `RELEASE_NOTES` 中，并将 KernelSU 引用添加到 `RELEASE_NOTES` 中。
+        if: ${{ inputs.use_ksu }}
         run: |
           if [ "${{ inputs.kernelsu_variant }}" == "Official" ]; then
             echo "This is the Official variant"
@@ -494,7 +532,8 @@ jobs:
             echo "Unknown variant"
           fi
           
-      - name: 将提交哈希值和链接添加到 `RELEASE_NOTES` 中，并将 KernelSU-Next 引用添加到 `RELEASE_NOTES` 中。
+      - name: 将提交哈希值和链接添加到 `RELEASE_NOTES` 中（提交详情）
+        if: ${{ inputs.use_ksu }}
         run: |
           echo "RELEASE_NOTES<<EOF" >> $GITHUB_ENV
           echo "$RELEASE_NOTES" >> $GITHUB_ENV
@@ -570,6 +609,7 @@ jobs:
           body: ${{ env.RELEASE_NOTES }}  # Pass the RELEASE_NOTES to the action
 
       - name: 上传KSU管理器 & SUS模块
+        if: ${{ inputs.use_ksu }}
         continue-on-error: true
         run: |
             echo "Uploading KSU管理器"
@@ -594,3 +634,4 @@ jobs:
         run: |
           echo "GitHub release created with the following files:"
           ls ./downloaded-artifacts/**/*
+
