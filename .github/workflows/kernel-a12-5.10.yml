@@ -132,7 +132,6 @@ jobs:
       android_version: "android12"
       kernel_version: "5.10"
       sub_level: ${{ matrix.sub_level }}
-      make_release: true
       use_ksu: ${{ inputs.use_ksu }}
       os_patch_level: ${{ matrix.os_patch_level }}
       # revision: ${{ matrix.revision }}
