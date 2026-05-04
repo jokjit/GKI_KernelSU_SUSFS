@@ -81,6 +81,12 @@ on:
         required: true
         type: boolean
         default: true
+      # ↓↓↓ 新增：是否集成 KernelSU ↓↓↓
+      use_ksu:
+        description: '是否集成 KernelSU（关闭则编译纯净内核，不进行任何 su 修补）?'
+        required: true
+        type: boolean
+        default: true
 jobs:
   build-kernel-kernelsu-susfs:
     runs-on: ubuntu-latest
@@ -184,13 +190,13 @@ jobs:
 
           # Clone repositories using the branch names
           git clone https://github.com/WildKernels/AnyKernel3.git -b "$ANYKERNEL_BRANCH"
-          if [ "${{ inputs.use_susfs }}" == "true" ]; then
+          if [ "${{ inputs.use_ksu }}" == "true" ] && [ "${{ inputs.use_susfs }}" == "true" ]; then
             git clone https://gitlab.com/simonpunk/susfs4ksu.git -b "$SUSFS_BRANCH"
           else
-            echo "已关闭 SUSFS，跳过 susfs4ksu 仓库克隆"
+            echo "已关闭 KSU 或 SUSFS，跳过 susfs4ksu 仓库克隆"
           fi
           git clone https://github.com/WildKernels/kernel_patches.git
-          # Sukisu的补丁仓库
+          # Sukisu的补丁仓库（ZRAM 等功能也依赖此仓库）
           git clone https://github.com/SukiSU-Ultra/SukiSU_patch.git
           
       - name: 设置 CONFIG 环境变量
@@ -235,7 +241,9 @@ jobs:
             patch -p1 < fix_5.15.legacy.patch
           fi
       
+      # ↓↓↓ use_ksu=false 时跳过此步骤 ↓↓↓
       - name: 确定 KernelSU 的分支
+        if: ${{ inputs.use_ksu }}
         run: |
           branch_input="${{ inputs.kernelsu_branch }}"
           variant_input="${{ inputs.kernelsu_variant }}"
@@ -291,7 +299,9 @@ jobs:
 
           echo "最终 KernelSU 分支参数: $BRANCH"
 
+      # ↓↓↓ use_ksu=false 时跳过此步骤 ↓↓↓
       - name: 添加 KernelSU
+        if: ${{ inputs.use_ksu }}
         run: |
           echo "更改为配置目录: $CONFIG..."
           cd "$CONFIG"
@@ -324,8 +334,9 @@ jobs:
 
           echo "Baseband-guard 配置完成"
 
+      # ↓↓↓ use_ksu=false 时 use_susfs 也应为 false，此步会被跳过 ↓↓↓
       - name: 为 KernelSU 变体安装 SUSFS 补丁
-        if: ${{ inputs.use_susfs }}
+        if: ${{ inputs.use_susfs && inputs.use_ksu }}
         run: |
           echo "更改为配置目录: $CONFIG..."
           cd "$CONFIG"
@@ -477,8 +488,9 @@ jobs:
             echo "::warning::Unicode bypass patch 可能未实际生效，请检查 patch 日志"
           fi
   
+      # ↓↓↓ use_ksu=false 时 use_susfs 也应为 false，此步会被跳过 ↓↓↓
       - name: 应用新的HOOKS补丁
-        if: ${{ inputs.use_susfs }}
+        if: ${{ inputs.use_susfs && inputs.use_ksu }}
         run: |
           echo "更改为配置目录: $CONFIG..."
           cd "$CONFIG/common"
@@ -587,26 +599,32 @@ jobs:
           cd "$CONFIG"
           echo "Adding configuration settings to gki_defconfig..."
 
-          # Add KSU configuration settings
-          echo "CONFIG_KSU=y" >> ./common/arch/arm64/configs/gki_defconfig
-          
-          if [ "${{ inputs.kernelsu_variant }}" == "Next" ]; then
-            echo "CONFIG_KSU_KPROBES_HOOK=n" >> ./common/arch/arm64/configs/gki_defconfig
-            echo "CONFIG_KSU_SUSFS_SUS_SU=n" >> ./common/arch/arm64/configs/gki_defconfig
-          elif [ "${{ inputs.kernelsu_variant }}" == "SukiSU" ]; then
-            # 仅在用户开启 use_kpm 且 supercall 头文件存在时启用 KPM。
-            # 否则会在 drivers/kernelsu/kpm 编译阶段报 uapi/supercall.h not found。
-            if [ "${{ inputs.use_kpm }}" == "true" ] && [ -f ./common/include/uapi/supercall.h ]; then
-              echo "启用 KPM（检测到 supercall.h）"
-              echo "CONFIG_KPM=y" >> ./common/arch/arm64/configs/gki_defconfig
-            else
-              echo "跳过 KPM（use_kpm=${{ inputs.use_kpm }}, supercall.h 缺失或未开启）"
-              echo "CONFIG_KPM=n" >> ./common/arch/arm64/configs/gki_defconfig
+          # ↓↓↓ KSU 相关 config：仅在 use_ksu=true 时写入 ↓↓↓
+          if [ "${{ inputs.use_ksu }}" == "true" ]; then
+            echo "集成 KernelSU，写入 CONFIG_KSU=y"
+            echo "CONFIG_KSU=y" >> ./common/arch/arm64/configs/gki_defconfig
+
+            if [ "${{ inputs.kernelsu_variant }}" == "Next" ]; then
+              echo "CONFIG_KSU_KPROBES_HOOK=n" >> ./common/arch/arm64/configs/gki_defconfig
+              echo "CONFIG_KSU_SUSFS_SUS_SU=n" >> ./common/arch/arm64/configs/gki_defconfig
+            elif [ "${{ inputs.kernelsu_variant }}" == "SukiSU" ]; then
+              # 仅在用户开启 use_kpm 且 supercall 头文件存在时启用 KPM。
+              # 否则会在 drivers/kernelsu/kpm 编译阶段报 uapi/supercall.h not found。
+              if [ "${{ inputs.use_kpm }}" == "true" ] && [ -f ./common/include/uapi/supercall.h ]; then
+                echo "启用 KPM（检测到 supercall.h）"
+                echo "CONFIG_KPM=y" >> ./common/arch/arm64/configs/gki_defconfig
+              else
+                echo "跳过 KPM（use_kpm=${{ inputs.use_kpm }}, supercall.h 缺失或未开启）"
+                echo "CONFIG_KPM=n" >> ./common/arch/arm64/configs/gki_defconfig
+              fi
+              echo "CONFIG_KSU_SUSFS_SUS_SU=n" >> ./common/arch/arm64/configs/gki_defconfig
+            elif [ "${{ inputs.kernelsu_variant }}" == "MKSU" ]; then
+              echo "CONFIG_KSU_SUSFS_SUS_SU=n" >> ./common/arch/arm64/configs/gki_defconfig
             fi
-            echo "CONFIG_KSU_SUSFS_SUS_SU=n" >> ./common/arch/arm64/configs/gki_defconfig
-          elif [ "${{ inputs.kernelsu_variant }}" == "MKSU" ]; then
-            echo "CONFIG_KSU_SUSFS_SUS_SU=n" >> ./common/arch/arm64/configs/gki_defconfig
+          else
+            echo "use_ksu=false，跳过 CONFIG_KSU 及变体相关 defconfig 写入，编译纯净内核"
           fi
+          # ↑↑↑ KSU 相关 config 结束 ↑↑↑
           
           # Add additional tmpfs config setting
           echo "CONFIG_TMPFS_XATTR=y" >> ./common/arch/arm64/configs/gki_defconfig
@@ -617,8 +635,8 @@ jobs:
           echo "CONFIG_IP6_NF_TARGET_HL=y" >> ./common/arch/arm64/configs/gki_defconfig
           echo "CONFIG_IP6_NF_MATCH_HL=y" >> ./common/arch/arm64/configs/gki_defconfig
 
-          # Add SUSFS configuration settings (可选)
-          if [ "${{ inputs.use_susfs }}" == "true" ]; then
+          # Add SUSFS configuration settings (可选，且需要 KSU)
+          if [ "${{ inputs.use_susfs }}" == "true" ] && [ "${{ inputs.use_ksu }}" == "true" ]; then
             echo "CONFIG_KSU_SUSFS=y" >> ./common/arch/arm64/configs/gki_defconfig
             echo "CONFIG_KSU_SUSFS_SUS_MAP=y" >> ./common/arch/arm64/configs/gki_defconfig
             if [ "${{ inputs.kernel_version }}" != "6.6" ]; then
@@ -639,7 +657,7 @@ jobs:
             echo "CONFIG_KSU_SUSFS_OPEN_REDIRECT=y" >> ./common/arch/arm64/configs/gki_defconfig
             echo "CONFIG_KSU_SUSFS_SUS_MAP=y" >> ./common/arch/arm64/configs/gki_defconfig
           else
-            echo "已关闭 SUSFS，跳过 SUSFS defconfig 写入"
+            echo "已关闭 SUSFS 或 KSU，跳过 SUSFS defconfig 写入"
           fi
           
           # Remove check_defconfig
@@ -796,8 +814,9 @@ jobs:
             fi
             ccache --show-stats
             
+      # ↓↓↓ use_ksu=false 时此步会被 if 条件跳过 ↓↓↓
       - name: 修补 Image 文件 安卓12和安卓13(仅限sukisu)
-        if: ${{ inputs.use_kpm && inputs.kernelsu_variant == 'SukiSU' && (inputs.android_version == 'android12' || inputs.android_version == 'android13') }}
+        if: ${{ inputs.use_ksu && inputs.use_kpm && inputs.kernelsu_variant == 'SukiSU' && (inputs.android_version == 'android12' || inputs.android_version == 'android13') }}
         run: |
           if [ ! -f "$CONFIG/common/include/uapi/supercall.h" ]; then
             echo "supercall.h 缺失，跳过 KPM Image 修补步骤"
@@ -814,8 +833,9 @@ jobs:
             cd ../../../..
           fi
 
+      # ↓↓↓ use_ksu=false 时此步会被 if 条件跳过 ↓↓↓
       - name: 修补 Image 文件 安卓14和安卓15(仅限sukisu)
-        if: ${{ inputs.use_kpm && inputs.kernelsu_variant == 'SukiSU' && (inputs.android_version == 'android14' || inputs.android_version == 'android15') }}
+        if: ${{ inputs.use_ksu && inputs.use_kpm && inputs.kernelsu_variant == 'SukiSU' && (inputs.android_version == 'android14' || inputs.android_version == 'android15') }}
         run: |
           if [ ! -f "$CONFIG/common/include/uapi/supercall.h" ]; then
             echo "supercall.h 缺失，跳过 KPM Image 修补步骤"
@@ -976,15 +996,8 @@ jobs:
       - name: 上传编译资产
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ inputs.kernelsu_variant }}_kernel-${{ env.CONFIG }}
+          # use_ksu=false 时使用 Vanilla 前缀，避免误认为已集成 KSU
+          name: ${{ inputs.use_ksu == true && inputs.kernelsu_variant || 'Vanilla' }}_kernel-${{ env.CONFIG }}
           path: |
             *AnyKernel3.zip
             *.img
-
-
-
-
-
-
-
-
